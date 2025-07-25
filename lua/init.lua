@@ -57,8 +57,10 @@ local function diff_snapshots(old, new)
   )
 end
 
--- TODO (sbadragan): fix the type, snapshot is anything that implements __tostring
-assert:register('assertion', 'matches_snapshot', function(state, arguments)
+--- checks if given value matches previously recorded snapshot
+---@param state any
+---@param arguments { [1]: any, [2]: {desc: string} }
+local function snapshot_matches(state, arguments)
   snapshot_count = snapshot_count + 1
   local current_snapshot = arguments[1]
   local params = arguments[2] or {}
@@ -117,7 +119,18 @@ assert:register('assertion', 'matches_snapshot', function(state, arguments)
 
     return true
   end
-end, 'assertion.matches_snapshot.positive', 'assertion.matches_snapshot.negative')
+end
 
-say:set('assertion.matches_snapshot.positive', 'Expected matching snapshot!')
-say:set('assertion.matches_snapshot.negative', 'Expected not matching snapshot!')
+assert:register(
+  'assertion',
+  'snapshot_matches',
+  snapshot_matches,
+  'assertion.snapshot_matches.positive',
+  'assertion.snapshot_matches.negative'
+)
+say:set('assertion.snapshot_matches.positive', 'Expected matching snapshot!')
+say:set('assertion.snapshot_matches.negative', 'Expected not matching snapshot!')
+
+-- TODO (sbadragan): how do we fix this???
+---@class Luassert : Luassert
+---@field snapshot_matches fun(expected: any, opts?: { desc?: string })
