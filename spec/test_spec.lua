@@ -1,4 +1,3 @@
--- TODO (sbadragan): fix this
 local assert = require('luassert.assert')
 
 describe('my test spec', function()

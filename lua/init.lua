@@ -130,7 +130,3 @@ assert:register(
 )
 say:set('assertion.snapshot_matches.positive', 'Expected matching snapshot!')
 say:set('assertion.snapshot_matches.negative', 'Expected not matching snapshot!')
-
--- TODO (sbadragan): how do we fix this???
----@class Luassert : Luassert
----@field snapshot_matches fun(expected: any, opts?: { desc?: string })
