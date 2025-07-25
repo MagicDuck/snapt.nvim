@@ -1,13 +1,15 @@
 return {
-	_all = {
-		coverage = false,
-		lpath = "lua/?.lua;lua/?/init.lua",
-		lua = "nlua",
-	},
-	default = {
-		verbose = true,
-	},
-	tests = {
-		verbose = true,
-	},
+  _all = {
+    coverage = false,
+    lpath = 'lua/?.lua;lua/?/init.lua',
+    lua = 'nlua',
+    helper = 'lua/init.lua',
+    Xhelper = { '--use_delta', 'true' },
+  },
+  default = {
+    verbose = true,
+  },
+  tests = {
+    verbose = true,
+  },
 }
