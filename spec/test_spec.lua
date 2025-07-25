@@ -2,7 +2,7 @@ local assert = require('luassert.assert')
 local say = require('say')
 local busted = require('busted')
 
--- note: mostly lifeted from mini.test
+-- note: mostly lifted from mini.test
 -- Sanitize path. Replace any control characters, whitespace, OS specific
 -- forbidden characters with '_' (with some useful exception)
 local function sanitize_path_element(name)
@@ -24,8 +24,6 @@ busted.subscribe({ 'test', 'start' }, function(element, parent)
   current_it = element
   current_describe = parent
   snapshot_count = 0
-  -- TODO (sbadragan): remove
-  -- vim.print("test start", element, parent)
 end)
 
 --- get path to snapshot
@@ -40,8 +38,7 @@ local function get_snaphost_file_path(snapshot_name)
     .. vim.fs.basename(spec_path)
   local describe_name_dir = sanitize_path_element(current_describe.name)
   local it_name_dir = sanitize_path_element(current_it.name)
-  local fname = snapshot_name
-    or ('snapshot' .. (snapshot_count > 1 and '_' .. snapshot_count or ''))
+  local fname = string.format('%.2d', snapshot_count) .. ' - ' .. snapshot_name
   return spec_name_dir .. '/' .. describe_name_dir .. '/' .. it_name_dir, fname .. '.snapt'
 end
 
@@ -54,8 +51,9 @@ local function diff_snapshots(old, new)
   )
 end
 
--- TODO (sbadragan): is this correct? Do we need to print a snapshot
 -- TODO (sbadragan): fix the type, snapshot is anything that implements __tostring
+-- TODO (sbadragan): this needs to be configured somehow
+local use_delta = true
 assert:register('assertion', 'matches_snapshot', function(state, arguments)
   snapshot_count = snapshot_count + 1
   local current_snapshot = arguments[1]
@@ -79,7 +77,25 @@ assert:register('assertion', 'matches_snapshot', function(state, arguments)
     if #diff == 0 then
       return true
     end
-    state.failure_message = 'snapshot diff:\n' .. diff
+
+    local diff_header = snapshot_name .. ' snapshot diff:\n'
+    if use_delta then
+      local external_diff_formatter = vim
+        .system({ 'delta' }, {
+          text = true,
+          stdin = diff,
+        })
+        :wait()
+
+      if external_diff_formatter.code ~= 0 then
+        state.failure_message = 'Error running exetrnal diff tool\n'
+          .. external_diff_formatter.stderr
+      else
+        state.failure_message = diff_header .. external_diff_formatter.stdout
+      end
+    else
+      state.failure_message = diff_header .. diff
+    end
 
     return false
   else
@@ -103,6 +119,6 @@ say:set('assertion.matches_snapshot.negative', 'Expected not matching snapshot!'
 
 describe('my test spec', function()
   it('shuld run a simple test', function()
-    assert.matches_snapshot('hello\nthing\nworld', { desc = 'hello world' })
+    assert.matches_snapshot('hello\nthingasd\nworld', { desc = 'hello world' })
   end)
 end)
