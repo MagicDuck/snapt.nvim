@@ -6,9 +6,9 @@
   "workspace": {
     "library": [
       "$VIMRUNTIME",
+      "$LLS_Addons/luvit",
       "$LLS_Addons/busted",
-      "$LLS_Addons/luassert",
-      "$LLS_Addons/luvit"
+      "$LLS_Addons/luassert"
     ]
   }
 }

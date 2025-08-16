@@ -25,7 +25,12 @@ local function sanitize_path_element(name)
   return name:gsub(pattern, replacements)
 end
 
-local current_it, current_describe, snapshot_count
+---@type { name: string, trace: { short_src: string } }
+local current_it
+---@type { name: string }
+local current_describe
+local snapshot_count = 0
+
 busted.subscribe({ 'test', 'start' }, function(element, parent)
   current_it = element
   current_describe = parent
@@ -90,7 +95,7 @@ local function snapshot_matches(state, arguments)
         .system({ config.delta_path or 'delta' }, {
           text = true,
           stdin = diff,
-        })
+        } --[[@as vim.SystemOpts]])
         :wait()
 
       if external_diff_formatter.code ~= 0 then
