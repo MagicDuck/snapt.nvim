@@ -1,13 +1,34 @@
 local say = require('say')
 local busted = require('busted')
 local assert = require('luassert.assert')
+local opts = require('opts')
 
--- grab the helper args (ex, from .busted Xhelper = {...})
-local config = {}
-for i = 1, #arg, 2 do
-  config[arg[i]:sub(3)] = arg[i + 1]
+local M = {}
+
+M.options = opts.defaultOptions
+
+--- configure behaviour of snapt
+---@param new_options snapt.OptionsOverride
+function M.configure(new_options)
+  M.options = opts.with_defaults(new_options, opts.defaultOptions)
 end
-vim.print(config)
+
+---@class My
+local My = {}
+
+---@class snapt.SnapshotOpts
+---@field desc? string snapshot description to include in the snapshot file name
+
+--- compares current snapshot with previously saved snapshot if one available
+--- otherwise, it just saves the snapshot
+---@param current_snapshot any the snapshot, tostring() is assumed to be implemented
+---@param opts? snapt.SnapshotOpts
+---@diagnostic disable-next-line
+My.snapshot_matches = function(current_snapshot, opts) end
+
+---@class snapt.luassert : luassert, My
+
+M.assert = assert --[[@as snapt.luassert]]
 
 -- note: mostly lifted from mini.test
 -- Sanitize path. Replace any control characters, whitespace, OS specific
@@ -90,9 +111,9 @@ local function snapshot_matches(state, arguments)
     end
 
     local diff_header = snapshot_name .. ' snapshot diff:\n'
-    if config.use_delta == 'true' then
+    if M.options.use_delta then
       local external_diff_formatter = vim
-        .system({ config.delta_path or 'delta' }, {
+        .system({ M.options.delta_path }, {
           text = true,
           stdin = diff,
         } --[[@as vim.SystemOpts]])
@@ -135,3 +156,5 @@ assert:register(
 )
 say:set('assertion.snapshot_matches.positive', 'Expected matching snapshot!')
 say:set('assertion.snapshot_matches.negative', 'Expected not matching snapshot!')
+
+return M
