@@ -12,16 +12,49 @@ snapt.defaultOptions = {
 
   -- path to "delta" executable
   delta_path = 'delta',
+
+  -- diffing options
+  diff = {
+    -- diffing algorithm to use (see vim.diff)
+    -- 'myers'|'minimal'|'patience'|'histogram'
+    algorithm = 'minimal',
+
+    -- external formatter config
+    -- for instance you can configure `delta` to format diffs
+    external_formatter = {
+      enabled = false,
+
+      -- path to executable. The diff will be piped to this program on stdin and
+      -- it's expected that the formatted output will be available on stdout
+      path = 'delta',
+    },
+  },
 }
+
+---@alias snapt.options.diff.algorithm 'myers'|'minimal'|'patience'|'histogram'
+
+---@class snapt.options.diff.external_formatter
+---@field enabled boolean
+---@field path string
+
+---@class snapt.options.diff.external_formatter_override
+---@field enabled? boolean
+---@field path? string
+
+---@class snapt.options.diff
+---@field algorithm snapt.options.diff.algorithm
+---@field external_formatter snapt.options.diff.external_formatter
+
+---@class snapt.options.diff_override
+---@field algorithm? snapt.options.diff.algorithm
+---@field external_formatter? snapt.options.diff.external_formatter
 
 ---@class snapt.Options
 ---@tag snapt.Options
----@field use_delta boolean
----@field delta_path string
+---@field diff snapt.options.diff
 
 ---@class snapt.OptionsOverride
----@field use_delta? boolean
----@field delta_path? string
+---@field diff? snapt.options.diff_override
 
 --- generates merged options
 ---@param options snapt.OptionsOverride | snapt.Options

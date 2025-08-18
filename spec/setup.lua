@@ -1,4 +1,11 @@
 local snapt = require('snapt')
-snapt.configure({ use_delta = true })
+snapt.configure({
+  diff = {
+    external_formatter = {
+      enabled = true,
+      path = 'delta',
+    },
+  },
+})
 
 return snapt.assert

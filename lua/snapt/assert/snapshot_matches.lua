@@ -19,6 +19,27 @@ local function sanitize_path_element(name)
   return name:gsub(pattern, replacements)
 end
 
+--- formats given diff string using external formatter
+---@param diff string
+---@return boolean success, string output, string errors
+local function external_format_diff(diff)
+  local run = function()
+    return vim
+      .system({ context.options.diff.external_formatter.path }, {
+        text = true,
+        stdin = diff,
+      } --[[@as vim.SystemOpts]])
+      :wait()
+  end
+
+  local success, result = pcall(run)
+  if success then
+    return result.code == 0, result.stdout or '', result.stderr or ''
+  else
+    return false, '', result --[[@as string]]
+  end
+end
+
 ---@type { name: string, trace: { short_src: string } }
 local current_it
 ---@type { name: string }
@@ -52,8 +73,8 @@ local function diff_snapshots(old, new)
     -- note: adding \n to prevent "\ No newline at end of file" message
     old .. '\n',
     new .. '\n',
-    { result_type = 'unified', algorithm = 'minimal', ctxlen = 1000 }
-  )
+    { result_type = 'unified', algorithm = context.options.diff.algorithm, ctxlen = 1000 }
+  ) --[[@as string]]
 end
 
 --- checks if given value matches previously recorded snapshot
@@ -84,19 +105,17 @@ local function snapshot_matches(state, arguments)
     end
 
     local diff_header = snapshot_name .. ' snapshot diff:\n'
-    if context.options.use_delta then
-      local external_diff_formatter = vim
-        .system({ context.options.delta_path }, {
-          text = true,
-          stdin = diff,
-        } --[[@as vim.SystemOpts]])
-        :wait()
-
-      if external_diff_formatter.code ~= 0 then
-        state.failure_message = 'Error running exetrnal diff tool\n'
-          .. external_diff_formatter.stderr
+    if context.options.diff.external_formatter.enabled then
+      local success, output, errors = external_format_diff(diff)
+      if success then
+        state.failure_message = diff_header .. output
       else
-        state.failure_message = diff_header .. external_diff_formatter.stdout
+        state.failure_message = 'Error running external diff formatter "'
+          .. context.options.diff.external_formatter.path
+          .. '"\n'
+          .. errors
+          .. '\nFalling back to builtin diff:\n'
+          .. diff
       end
     else
       state.failure_message = diff_header .. diff
