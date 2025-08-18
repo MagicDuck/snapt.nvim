@@ -4,7 +4,7 @@ package = 'snapt.nvim'
 version = 'scm-1'
 
 test_dependencies = {
-  'lua = 5.1',
+  'lua >= 5.1',
   'nlua',
 }
 
