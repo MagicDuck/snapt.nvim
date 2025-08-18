@@ -1,4 +1,4 @@
-local assert = require('helper')
+local assert = require('setup')
 
 describe('my test spec', function()
   it('shuld run a simple test', function()
