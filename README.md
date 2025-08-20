@@ -1,5 +1,10 @@
 # snapt
 
 # initial install
- luarocks test --local --lua-version=5.1
+luarocks build --only-deps --local --lua-version=5.1
+
+# running busted
+luarocks test --local
+busted -Xhelper update-snapshots
+
 

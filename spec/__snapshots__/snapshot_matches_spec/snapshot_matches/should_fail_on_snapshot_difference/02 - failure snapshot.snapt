@@ -1,0 +1,4 @@
+failure assert snapshot diff:
+@@ -1 +1 @@
+-test
++test_different
