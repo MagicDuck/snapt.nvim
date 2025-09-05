@@ -8,6 +8,7 @@ luarocks test --local
 busted -Xhelper update-snapshots
 
 # TODO
-- [ ] should we have a wrapper on top of busted for `-Xhelper` stuff???
+<!-- TODO (sbadragan): should we have a wrapper on top of busted for `-Xhelper` stuff??? -->
+<!-- TODO (sbadragan): how can we spawn an instance of nvim --> 
 
 
