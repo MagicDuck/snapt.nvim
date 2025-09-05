@@ -5,14 +5,6 @@ local snapt = {}
 ---@seealso |snapt.Options|
 ---@type snapt.Options
 snapt.defaultOptions = {
-  -- TODO (sbadragan): this could be structured better?
-  -- TODO (sbadragan): should we allow other diffing programs?
-  -- whether to use "delta" for diffs
-  use_delta = false,
-
-  -- path to "delta" executable
-  delta_path = 'delta',
-
   -- diffing options
   diff = {
     -- diffing algorithm to use (see vim.diff)
@@ -24,9 +16,9 @@ snapt.defaultOptions = {
     external_formatter = {
       enabled = false,
 
-      -- path to executable. The diff will be piped to this program on stdin and
+      -- command of the form { path, arg1, arg2,... }. The diff will be piped to this program on stdin and
       -- it's expected that the formatted output will be available on stdout
-      path = 'delta',
+      cmd = { 'delta', '--side-by-side', '--hunk-header-style=omit' },
     },
   },
 }
@@ -35,11 +27,11 @@ snapt.defaultOptions = {
 
 ---@class snapt.options.diff.external_formatter
 ---@field enabled boolean
----@field path string
+---@field cmd string[]
 
 ---@class snapt.options.diff.external_formatter_override
 ---@field enabled? boolean
----@field path? string
+---@field cmd? string[]
 
 ---@class snapt.options.diff
 ---@field algorithm snapt.options.diff.algorithm

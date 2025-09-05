@@ -28,7 +28,7 @@ end
 local function external_format_diff(diff, diff_opts)
   local run = function()
     return vim
-      .system({ diff_opts.external_formatter.path }, {
+      .system(diff_opts.external_formatter.cmd, {
         text = true,
         stdin = diff,
       } --[[@as vim.SystemOpts]])
@@ -126,9 +126,9 @@ function M.snapshot_matches(arguments, opts)
       if success then
         return diff_header .. output
       else
-        return 'Error running external diff formatter "'
-          .. opts.diff.external_formatter.path
-          .. '"\n'
+        return "Error running external diff formatter '"
+          .. vim.inspect(opts.diff.external_formatter.cmd)
+          .. "'\n"
           .. errors
           .. '\nFalling back to builtin diff:\n'
           .. diff

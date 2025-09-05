@@ -46,7 +46,7 @@ describe('snapshot_matches', function()
         diff = vim.tbl_deep_extend('force', vim.deepcopy(opts.defaultOptions.diff), {
           external_formatter = {
             enabled = true,
-            path = 'bob_the_builder',
+            cmd = { 'bob_the_builder' },
           },
         }),
         force_old_snapshot = 'test',
