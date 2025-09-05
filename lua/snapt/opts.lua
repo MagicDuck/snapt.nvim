@@ -39,7 +39,7 @@ snapt.defaultOptions = {
 
 ---@class snapt.options.diff_override
 ---@field algorithm? snapt.options.diff.algorithm
----@field external_formatter? snapt.options.diff.external_formatter
+---@field external_formatter? snapt.options.diff.external_formatter_override
 
 ---@class snapt.Options
 ---@tag snapt.Options
