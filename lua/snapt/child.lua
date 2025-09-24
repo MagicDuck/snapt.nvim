@@ -4,8 +4,8 @@
 local NvimInstance = {}
 NvimInstance.__index = NvimInstance
 
--- trick language server to have proper types for instance.api.xxx and instance.api_notify.xxx
--- those get overriden in the constructor below
+-- trick language server to have proper types those get overriden in the constructor
+-------------------------------------------------------------------------------------------
 
 --- Sugar for `vim.api.xxx` API to be executed inside nvim instance
 NvimInstance.api = vim.api
@@ -13,6 +13,8 @@ NvimInstance.api = vim.api
 --- Variant of `api` functions called with `vim.rpcnotify`. Useful for making
 --- blocking requests (like `getcharstr()`).
 NvimInstance.api_notify = vim.api
+
+-------------------------------------------------------------------------------------------
 
 -- TODO (sbadragan): what do we want in here?
 -- do we want the full API?? or just some child.lua(), child.lua_get()
@@ -113,7 +115,8 @@ function NvimInstance:stop()
   -- Properly exit Neovim. `pcall` avoids `channel closed by client` error.
   -- Also wait for it to actually close. This reduces simultaneously opened
   -- Neovim instances and CPU load (overall reducing flakey tests).
-  pcall(self.cmd, 'silent! 0cquit')
+  -- TODO (sbadragan): should this be self:cmd ??
+  pcall(NvimInstance.cmd, self, 'silent! 0cquit')
   vim.fn.jobwait({ self.job.id }, 1000)
 
   -- Close all used channels. Prevents `too many open files` type of errors.
@@ -126,6 +129,9 @@ function NvimInstance:stop()
 end
 
 --- check if instance is blocked
+--- i.e. it waits for user input and won't return from other call. Common causes are
+--- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
+--- or Operator-pending mode (can mitigate by exiting it)
 ---@return boolean
 function NvimInstance:is_blocked()
   return self.api.nvim_get_mode()['blocking']
@@ -135,12 +141,21 @@ end
 -- should we call it on every command?
 -- should it error out in middle?
 -- should we change error message?
-function NvimInstance:_prevent_hanging(method)
+function NvimInstance:_prevent_hanging()
   if not self:is_blocked() then
     return
   end
 
-  error(string.format('Can not use `child.%s` because child process is blocked.', method))
+  -- TODO (sbadragan): better explanation
+  error(string.format('NvimInstance: process is blocked.'))
+end
+
+--- runs vimscript in the context of the instance
+---@param cmd string
+function NvimInstance:cmd(cmd)
+  self:_prevent_hanging()
+  -- TODO (sbadragan): check v:errmsg ?? and return output??
+  return self.api.nvim_exec2(cmd, { output = false })
 end
 
 return NvimInstance
