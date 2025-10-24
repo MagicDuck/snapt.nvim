@@ -1,4 +1,3 @@
--- TODO (sbadragan): rename this file
 -- NOTE: the following code takes heavy inspiration from mini.nvim test module
 -- nvim child process implementation: https://github.com/nvim-mini/mini.nvim/blob/main/lua/mini/test.lua
 -- There's really not a lot of ways you can write it and mini.test already did a cracking job on most things IMO.
@@ -26,7 +25,7 @@ function start_nvim_instance(nvim_executable, nvim_args, connection_timeout)
   if vim.fn.has('win32') == 1 then
     -- Use special local pipe prefix on Windows with (hopefully) unique name
     -- Source: https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-names
-    job.address = [[\\.\pipe\mininvim]] .. vim.fn.fnamemodify(job.address, ':t')
+    job.address = [[\\.\pipe\snaptnvim]] .. vim.fn.fnamemodify(job.address, ':t')
   end
 
   --stylua: ignore
