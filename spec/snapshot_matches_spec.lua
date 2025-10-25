@@ -1,4 +1,4 @@
-local assert = require('setup')
+local assert = require('setup')()
 local snapshot_matches = require('snapt.assert.snapshot_matches')
 local opts = require('snapt.opts')
 

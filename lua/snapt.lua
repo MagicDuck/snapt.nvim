@@ -14,7 +14,7 @@ M.configure({})
 
 M.assert = assert
 
----@param options snapt.NvimInstanceOpts
+---@param options? snapt.NvimInstanceOpts
 function M.create_nvim_instance(options)
   return require('snapt.nvim_instance').create_nvim_instance(options)
 end

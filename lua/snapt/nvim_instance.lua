@@ -3,6 +3,8 @@
 -- There's really not a lot of ways you can write it and mini.test already did a cracking job on most things IMO.
 -- Credits go to mini.test's author and mistakes in this re-working are mine :)
 
+local M = {}
+
 ---@class snapt.NvimInstanceOpts
 ---@field nvim_executable? string path to nvim executable
 ---@field nvim_args? string[] additional neovim arguments
@@ -66,8 +68,8 @@ function start_nvim_instance(nvim_executable, nvim_args, connection_timeout)
   return job
 end
 
----@param options snapt.NvimInstanceOpts
-function create_nvim_instance(options)
+---@param options? snapt.NvimInstanceOpts
+function M.create_nvim_instance(options)
   local inst = {}
 
   local opts = vim.tbl_deep_extend(
@@ -193,3 +195,5 @@ function create_nvim_instance(options)
 
   return inst
 end
+
+return M
