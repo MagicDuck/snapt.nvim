@@ -10,6 +10,11 @@ local M = {}
 ---@field nvim_args? string[] additional neovim arguments
 ---@field connection_timeout? integer
 
+---@class snapt.NvimInstanceResolvedOpts
+---@field nvim_executable string
+---@field nvim_args string[]
+---@field connection_timeout integer
+
 ---@class snapt.NvimInstaceJob
 ---@field address string
 ---@field id integer
@@ -76,7 +81,7 @@ function M.create_nvim_instance(options)
     'force',
     { nvim_executable = vim.v.progpath, nvim_args = {}, connection_timeout = 5000 },
     options or {}
-  )
+  ) --[[@as snapt.NvimInstanceResolvedOpts]]
 
   local state = {
     job = start_nvim_instance(opts.nvim_executable, opts.nvim_args, opts.connection_timeout) --[[@as snapt.NvimInstaceJob?]],

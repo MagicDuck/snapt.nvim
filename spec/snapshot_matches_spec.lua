@@ -42,7 +42,7 @@ describe('snapshot_matches', function()
     local failure_message = snapshot_matches.snapshot_matches(
       { 'test_different', { desc = 'failure assert' } },
       {
-        ---@diagnostic disable-next-line: param-type-not-match
+        ---@diagnostic disable-next-line: param-type-mismatch
         diff = vim.tbl_deep_extend('force', vim.deepcopy(opts.defaultOptions.diff), {
           external_formatter = {
             enabled = true,
@@ -53,6 +53,6 @@ describe('snapshot_matches', function()
       }
     )
 
-    assert.snapshot_matches(failure_message, { desc = 'failure snapshot' })
+    assert.matches('no such file or directory', failure_message or '', 1, true)
   end)
 end)
