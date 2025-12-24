@@ -9,6 +9,7 @@ local M = {}
 ---@field nvim_executable? string path to nvim executable
 ---@field nvim_args? string[] additional neovim arguments
 ---@field connection_timeout? integer
+---@field cleanup_previous? boolean stop/clean up previous global nvim instance if existing
 
 ---@class snapt.NvimInstanceResolvedOpts
 ---@field nvim_executable string
@@ -19,6 +20,58 @@ local M = {}
 ---@field address string
 ---@field id integer
 ---@field channel integer
+
+---@class snapt.NvimInstance
+local NvimInstance = {}
+
+--- stop neovim instance
+NvimInstance.stop = function() end
+
+-- NOTE: assignments below like `NvimInstInterface.api = vim.api` trick language server to have proper types
+
+--- Sugar for `vim.api.xxx` API to be executed inside nvim instance
+NvimInstance.api = vim.api
+
+--- Variant of `api` functions called with `vim.rpcnotify`. Useful for making
+--- blocking requests (like `getcharstr()`).
+NvimInstance.api_notify = vim.api
+
+---@diagnostic disable-next-line: missing-return
+--- check if instance is blocked
+--- i.e. it waits for user input and won't return from other call. Common causes are
+--- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
+--- or Operator-pending mode (can mitigate by exiting it)
+---@return boolean
+NvimInstance.is_blocked = function() end
+
+---@diagnostic disable-next-line: unused
+--- runs vimscript in the context of the instance
+---@param cmd string
+---@return any result
+NvimInstance.cmd = function(cmd) end
+
+---@diagnostic disable-next-line: unused
+--- Execute lua code and returns result (passed in string is prefixed with `return`).
+--- Parameters (if any) are available as `...` inside the lua code chunk.
+---
+--- examples:
+--- local result = inst.lua('my_function(...)', { arg1, arg2 })
+--- local result = inst.lua('MyPlugin.doThing()')
+---@param lua_code string lua code
+---@param args? table
+---@return any
+NvimInstance.lua = function(lua_code, args) end
+
+---@diagnostic disable-next-line: unused
+--- Executes lua code without waiting for result. This is useful when making
+--- blocking requests (like `getcharstr()`).
+--- Parameters (if any) are available as `...` inside the lua code chunk.
+---
+--- examples:
+--- inst.lua_notify('getcharstr()')
+---@param lua_code string lua code
+---@param args? table
+NvimInstance.lua_notify = function(lua_code, args) end
 
 --- starts nvim child process
 ---@param nvim_executable string
@@ -74,9 +127,8 @@ function start_nvim_instance(nvim_executable, nvim_args, connection_timeout)
 end
 
 ---@param options? snapt.NvimInstanceOpts
+---@return snapt.NvimInstance
 function M.create_nvim_instance(options)
-  local inst = {}
-
   local opts = vim.tbl_deep_extend(
     'force',
     { nvim_executable = vim.v.progpath, nvim_args = {}, connection_timeout = 5000 },
@@ -95,63 +147,8 @@ function M.create_nvim_instance(options)
     return state.job --[[@as snapt.NvimInstaceJob]]
   end
 
-  --- stop neovim instance
-  inst.stop = function()
-    local job = state.job
-    if not job then
-      return
-    end
-
-    -- Properly exit Neovim. `pcall` avoids `channel closed by client` error.
-    -- Also wait for it to actually close. This reduces simultaneously opened
-    -- Neovim instances and CPU load (overall reducing flakey tests).
-    pcall(inst.cmd, 'silent! 0cquit')
-    vim.fn.jobwait({ job.id }, 1000)
-
-    -- Close all used channels. Prevents `too many open files` type of errors.
-    pcall(vim.fn.chanclose, job.channel)
-    pcall(vim.fn.chanclose, job.id)
-
-    -- Remove file for address to reduce chance of "can't open file" errors, as
-    -- address uses temporary unique files
-    pcall(vim.fn.delete, job.address)
-
-    state.job = nil
-  end
-
-  -- NOTE: assignments below like `inst.api = vim.api` trick language server to have proper types
-
-  --- Sugar for `vim.api.xxx` API to be executed inside nvim instance
-  inst.api = vim.api
-  inst.api = setmetatable({}, {
-    __index = function(_, key)
-      return function(...)
-        local job = ensure_job_started()
-        return vim.rpcrequest(job.channel, key, ...)
-      end
-    end,
-  })
-
-  --- Variant of `api` functions called with `vim.rpcnotify`. Useful for making
-  --- blocking requests (like `getcharstr()`).
-  inst.api_notify = vim.api
-  inst.api_notify = setmetatable({}, {
-    __index = function(_, key)
-      return function(...)
-        local job = ensure_job_started()
-        return vim.rpcnotify(job.channel, key, ...)
-      end
-    end,
-  })
-
-  --- check if instance is blocked
-  --- i.e. it waits for user input and won't return from other call. Common causes are
-  --- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
-  --- or Operator-pending mode (can mitigate by exiting it)
-  ---@return boolean
-  function inst.is_blocked()
-    return inst.api.nvim_get_mode()['blocking']
-  end
+  ---@type snapt.NvimInstance
+  local inst
 
   function prevent_hanging()
     if not inst.is_blocked() then
@@ -161,42 +158,69 @@ function M.create_nvim_instance(options)
     error('NvimInstance: Nvim is blocked waiting for input.')
   end
 
-  --- runs vimscript in the context of the instance
-  ---@param cmd string
-  ---@return any result
-  inst.cmd = function(cmd)
-    prevent_hanging()
+  inst = {
+    stop = function()
+      local job = state.job
+      if not job then
+        return
+      end
 
-    -- TODO (sbadragan): check v:errmsg ?? and return output??
-    return inst.api.nvim_exec2(cmd, { output = true })
-  end
+      -- Properly exit Neovim. `pcall` avoids `channel closed by client` error.
+      -- Also wait for it to actually close. This reduces simultaneously opened
+      -- Neovim instances and CPU load (overall reducing flakey tests).
+      pcall(inst.cmd, 'silent! 0cquit')
+      vim.fn.jobwait({ job.id }, 1000)
 
-  --- Execute lua code and returns result (passed in string is prefixed with `return`).
-  --- Parameters (if any) are available as `...` inside the lua code chunk.
-  ---
-  --- examples:
-  --- local result = inst.lua('my_function(...)', { arg1, arg2 })
-  --- local result = inst.lua('MyPlugin.doThing()')
-  ---@param lua_code string lua code
-  ---@param args? table
-  ---@return any
-  inst.lua = function(lua_code, args)
-    prevent_hanging()
-    return inst.api.nvim_exec_lua('return ' .. lua_code, args or {})
-  end
+      -- Close all used channels. Prevents `too many open files` type of errors.
+      pcall(vim.fn.chanclose, job.channel)
+      pcall(vim.fn.chanclose, job.id)
 
-  --- Executes lua code without waiting for result. This is useful when making
-  --- blocking requests (like `getcharstr()`).
-  --- Parameters (if any) are available as `...` inside the lua code chunk.
-  ---
-  --- examples:
-  --- inst.lua_notify('getcharstr()')
-  ---@param lua_code string lua code
-  ---@param args? table
-  inst.lua_notify = function(lua_code, args)
-    prevent_hanging()
-    inst.api_notify.nvim_exec_lua(lua_code, args or {})
-  end
+      -- Remove file for address to reduce chance of "can't open file" errors, as
+      -- address uses temporary unique files
+      pcall(vim.fn.delete, job.address)
+
+      state.job = nil
+    end,
+
+    api = setmetatable({}, {
+      __index = function(_, key)
+        return function(...)
+          local job = ensure_job_started()
+          return vim.rpcrequest(job.channel, key, ...)
+        end
+      end,
+    }),
+
+    api_notify = setmetatable({}, {
+      __index = function(_, key)
+        return function(...)
+          local job = ensure_job_started()
+          return vim.rpcnotify(job.channel, key, ...)
+        end
+      end,
+    }),
+
+    is_blocked = function()
+      return inst.api.nvim_get_mode()['blocking']
+    end,
+
+    cmd = function(cmd)
+      prevent_hanging()
+
+      -- TODO (sbadragan): check v:errmsg ?? and return output??
+      return inst.api.nvim_exec2(cmd, { output = true })
+    end,
+
+    lua = function(lua_code, args)
+      prevent_hanging()
+      return inst.api.nvim_exec_lua('return ' .. lua_code, args or {})
+    end,
+
+    lua_notify = function(lua_code, args)
+      prevent_hanging()
+      inst.api_notify.nvim_exec_lua(lua_code, args or {})
+    end,
+  }
 
   return inst
 end

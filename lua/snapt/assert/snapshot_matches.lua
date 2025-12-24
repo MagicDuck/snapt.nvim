@@ -120,7 +120,7 @@ function M.snapshot_matches(arguments, opts)
       return
     end
 
-    local diff_header = snapshot_name .. ' snapshot diff:\n'
+    local diff_header = (snapshot_name and snapshot_name .. ' ' or '') .. 'snapshot diff:\n'
     if opts.diff.external_formatter.enabled then
       local success, output, errors = external_format_diff(diff, opts.diff)
       if success then

@@ -3,6 +3,7 @@ return {
     coverage = false,
     lpath = 'lua/?.lua;lua/?/init.lua;spec/?.lua',
     lua = 'nlua',
+    helper = 'spec/setup.lua',
   },
   default = {
     verbose = true,

@@ -1,6 +1,7 @@
-local assert = require('setup')()
 local snapshot_matches = require('snapt.assert.snapshot_matches')
 local opts = require('snapt.opts')
+local snapt = require('snapt')
+local assert = snapt.assert
 
 describe('snapshot_matches', function()
   it('should work for a string snapshot', function()
