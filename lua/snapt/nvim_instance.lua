@@ -168,7 +168,7 @@ function M.create_nvim_instance(options)
     prevent_hanging()
 
     -- TODO (sbadragan): check v:errmsg ?? and return output??
-    return inst.api.nvim_exec2(cmd, { output = false })
+    return inst.api.nvim_exec2(cmd, { output = true })
   end
 
   --- Execute lua code and returns result (passed in string is prefixed with `return`).

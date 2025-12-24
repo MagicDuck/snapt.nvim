@@ -11,16 +11,18 @@ return function()
     },
   })
 
-  local M = {}
-
+  nvim_inst = nil
   busted.before_each(function()
     -- TODO (sbadragan): should this be set on a global thing so that snapshot can use it automatically??
-    M.nvim_inst = snapt.create_nvim_instance()
+    nvim_inst = snapt.create_nvim_instance()
   end)
 
   busted.after_each(function()
-    M.nvim_inst.stop()
+    if nvim_inst then
+      nvim_inst.stop()
+      nvim_inst = nil
+    end
   end)
 
-  return snapt.assert, M.nvim_inst
+  return snapt.assert, nvim_inst
 end
