@@ -10,16 +10,22 @@ local M = {}
 ---@field nvim_args? string[] additional neovim arguments
 ---@field connection_timeout? integer
 ---@field cleanup_previous? boolean stop/clean up previous global nvim instance if existing
+---@field lines? integer
+---@field columns? integer
 
 ---@class snapt.NvimInstanceResolvedOpts
 ---@field nvim_executable string
 ---@field nvim_args string[]
 ---@field connection_timeout integer
+---@field lines integer
+---@field columns integer
 
 ---@class snapt.NvimInstaceJob
 ---@field address string
 ---@field id integer
 ---@field channel integer
+---@field lines? integer
+---@field columns? integer
 
 ---@class snapt.NvimInstance
 local NvimInstance = {}
@@ -74,11 +80,9 @@ NvimInstance.lua = function(lua_code, args) end
 NvimInstance.lua_notify = function(lua_code, args) end
 
 --- starts nvim child process
----@param nvim_executable string
----@param nvim_args string[]
----@param connection_timeout integer
+---@param opts snapt.NvimInstanceResolvedOpts
 ---@return snapt.NvimInstaceJob
-function start_nvim_instance(nvim_executable, nvim_args, connection_timeout)
+function start_nvim_instance(opts)
   -- Make unique name for `--listen` pipe
   local job = { address = vim.fn.tempname() }
 
@@ -90,13 +94,12 @@ function start_nvim_instance(nvim_executable, nvim_args, connection_timeout)
 
   --stylua: ignore
   local full_args = {
-    nvim_executable, '--clean', '-n', '--listen', job.address,
+    opts.nvim_executable, '--clean', '-n', '--listen', job.address,
     -- Setting 'lines' and 'columns' makes headless process more like
     -- interactive for closer to reality testing
-    -- TODO (sbadragan): pass lines and columns as options
-    '--headless', '--cmd', 'set lines=24 columns=80'
+    '--headless', '--cmd', 'set lines='..opts.lines .. ' columns=' .. opts.columns
   }
-  vim.list_extend(full_args, nvim_args)
+  vim.list_extend(full_args, opts.nvim_args)
 
   -- Using 'jobstart' for creating a job is crucial for getting this to work
   -- in Github Actions. Other approaches:
@@ -109,7 +112,7 @@ function start_nvim_instance(nvim_executable, nvim_args, connection_timeout)
   local step = 10
   local connected = nil
   local i = 0
-  local max_tries = math.floor(connection_timeout / step)
+  local max_tries = math.floor(opts.connection_timeout / step)
   local channel_or_err = nil
   repeat
     i = i + 1
@@ -129,14 +132,16 @@ end
 ---@param options? snapt.NvimInstanceOpts
 ---@return snapt.NvimInstance
 function M.create_nvim_instance(options)
-  local opts = vim.tbl_deep_extend(
-    'force',
-    { nvim_executable = vim.v.progpath, nvim_args = {}, connection_timeout = 5000 },
-    options or {}
-  ) --[[@as snapt.NvimInstanceResolvedOpts]]
+  local opts = vim.tbl_deep_extend('force', {
+    nvim_executable = vim.v.progpath,
+    nvim_args = {},
+    connection_timeout = 5000,
+    lines = 24,
+    columns = 80,
+  }, options or {}) --[[@as snapt.NvimInstanceResolvedOpts]]
 
   local state = {
-    job = start_nvim_instance(opts.nvim_executable, opts.nvim_args, opts.connection_timeout) --[[@as snapt.NvimInstaceJob?]],
+    job = start_nvim_instance(opts) --[[@as snapt.NvimInstaceJob?]],
   }
 
   function ensure_job_started()
