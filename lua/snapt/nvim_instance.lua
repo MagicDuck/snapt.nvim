@@ -44,10 +44,10 @@ NvimInstance.api_notify = vim.api
 ---@return boolean
 NvimInstance.is_blocked = function() end
 
----@diagnostic disable-next-line: unused
+---@diagnostic disable-next-line: unused, missing-return
 --- runs vimscript in the context of the instance
 ---@param cmd string
----@return any result
+---@return { output?: string } result
 NvimInstance.cmd = function(cmd) end
 
 ---@diagnostic disable-next-line: unused
@@ -207,7 +207,6 @@ function M.create_nvim_instance(options)
     cmd = function(cmd)
       prevent_hanging()
 
-      -- TODO (sbadragan): check v:errmsg ?? and return output??
       return inst.api.nvim_exec2(cmd, { output = true })
     end,
 

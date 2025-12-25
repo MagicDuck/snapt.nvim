@@ -31,14 +31,12 @@ end
 ---@type snapt.NvimInstance
 M.nvim_inst = setmetatable({}, {
   __index = function(_, key)
-    return function(...)
-      if M._current_nvim_inst == nil then
-        error(
-          'No nvim child instance available! Please create one first with snapt.create_nvim_instance(...)'
-        )
-      end
-      return M._current_nvim_inst[key](...)
+    if M._current_nvim_inst == nil then
+      error(
+        'No nvim child instance available! Please create one first with snapt.create_nvim_instance(...)'
+      )
     end
+    return M._current_nvim_inst[key]
   end,
 })
 

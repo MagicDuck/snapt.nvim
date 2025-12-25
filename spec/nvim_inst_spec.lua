@@ -1,9 +1,16 @@
 local snapt = require('snapt')
 local assert = snapt.assert
-local nvim_inst = snapt.nvim_inst
+local i = snapt.nvim_inst
 
 describe('nvim_inst', function()
   it('should execute cmd', function()
-    assert.snapshot_matches(vim.inspect(nvim_inst.cmd('ls')))
+    assert.snapshot_matches(vim.inspect(i.cmd('ls')))
   end)
+  it('should execute cmd and return error', function()
+    assert.error_matches(function()
+      i.cmd('something_that_does_not_exist')
+    end, 'Not an editor command: something_that_does_not_exist', 1, true)
+  end)
+
+  -- TODO (sbadragan): add tests for other API in nvim_inst
 end)
