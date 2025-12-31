@@ -18,7 +18,13 @@ snapt.defaultOptions = {
 
       -- command of the form { path, arg1, arg2,... }. The diff will be piped to this program on stdin and
       -- it's expected that the formatted output will be available on stdout
-      cmd = { 'delta', '--side-by-side', '--hunk-header-style=omit' },
+      cmd = {
+        'delta',
+        '--no-gitconfig',
+        '--side-by-side',
+        '--hunk-header-style=omit',
+        '--width=172', -- 2 x 80 + 2 x 6  (80 is number of nvim columns, 6 is the space taken by the diff line numbers)
+      },
     },
   },
 }

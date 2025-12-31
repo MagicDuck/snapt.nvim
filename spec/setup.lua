@@ -5,7 +5,6 @@ snapt.configure({
   diff = {
     external_formatter = {
       enabled = true,
-      cmd = { 'delta' },
     },
   },
 })

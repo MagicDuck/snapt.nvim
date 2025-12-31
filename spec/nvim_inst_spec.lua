@@ -11,6 +11,10 @@ describe('nvim_inst', function()
       i.cmd('something_that_does_not_exist')
     end, 'Not an editor command: something_that_does_not_exist', 1, true)
   end)
+  it('should take screenshot', function()
+    i.cmd('e temp')
+    assert.snapshot_matches(i.screenshot())
+  end)
 
   -- TODO (sbadragan): add tests for other API in nvim_inst
 end)

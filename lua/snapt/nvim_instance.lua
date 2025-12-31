@@ -27,6 +27,21 @@ local M = {}
 ---@field lines? integer
 ---@field columns? integer
 
+--- note: implements a custom __tostring() for a pretty print
+---@class snapt.Screenshot
+---@field chars string[][] screen characters
+---@field lines string[] screen lines
+---@field attrs? string[][] encoded attributes for all screen positions
+---@field attr_lines? string[] lines of encoded attributes for all screen positions
+
+---@class snapt.ScreenshotConfig
+---@field force_redraw? boolean whether to process pending redraws before doing screenshot
+---@field include_attrs? boolean whether to include screen attributes (highlights, extmarks, etc) in screenshot
+
+---@class snapt.ScreenshotConfigResolved
+---@field force_redraw boolean
+---@field include_attrs boolean
+
 ---@class snapt.NvimInstance
 local NvimInstance = {}
 
@@ -41,14 +56,6 @@ NvimInstance.api = vim.api
 --- Variant of `api` functions called with `vim.rpcnotify`. Useful for making
 --- blocking requests (like `getcharstr()`).
 NvimInstance.api_notify = vim.api
-
----@diagnostic disable-next-line: missing-return
---- check if instance is blocked
---- i.e. it waits for user input and won't return from other call. Common causes are
---- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
---- or Operator-pending mode (can mitigate by exiting it)
----@return boolean
-NvimInstance.is_blocked = function() end
 
 ---@diagnostic disable-next-line: unused, missing-return
 --- runs vimscript in the context of the instance
@@ -78,6 +85,13 @@ NvimInstance.lua = function(lua_code, args) end
 ---@param lua_code string lua code
 ---@param args? table
 NvimInstance.lua_notify = function(lua_code, args) end
+
+---@diagnostic disable-next-line: missing-return
+---@diagnostic disable-next-line: unused
+--- get screenshot
+---@param config? snapt.ScreenshotConfig
+---@return snapt.Screenshot
+NvimInstance.screenshot = function(config) end
 
 --- starts nvim child process
 ---@param opts snapt.NvimInstanceResolvedOpts
@@ -129,6 +143,44 @@ function start_nvim_instance(opts)
   return job
 end
 
+--- Maps numeric attributes to character in order of their appearance on the screen.
+--- This leads to be a more reliable way of comparing two different screenshots (at cost of bigger effect when
+--- screenshot changes slightly).
+---@param attrs integer[][]
+---@return string[][]
+function encode_screenshot_attrs(attrs)
+  local attr_codes_map = {}
+  local res = {}
+  -- Use 48 so that codes start from `'0'`
+  local cur_code_id = 48
+  for _, l in ipairs(attrs) do
+    local res_line = {}
+    for _, s in ipairs(l) do
+      if not attr_codes_map[s] then
+        attr_codes_map[s] = string.char(cur_code_id)
+        -- Cycle through 33...126
+        cur_code_id = (math.fmod(cur_code_id + 1 - 33, 94) + 33) --[[@as integer]]
+      end
+      table.insert(res_line, attr_codes_map[s])
+    end
+    table.insert(res, res_line)
+  end
+
+  return res
+end
+
+---@param lines string[]
+function print_screenshot(lines)
+  local output_lines = lines
+
+  -- TODO (sbadragan): do we need prefix and stuff
+  --     return string.format('%s\n%s', ruler, table.concat(lines, '\n'))
+  -- for _, line in ipairs(lines) do
+  -- end
+
+  return table.concat(output_lines, '\n')
+end
+
 ---@param options? snapt.NvimInstanceOpts
 ---@return snapt.NvimInstance
 function M.create_nvim_instance(options)
@@ -155,8 +207,16 @@ function M.create_nvim_instance(options)
   ---@type snapt.NvimInstance
   local inst
 
+  --- check if instance is blocked
+  --- i.e. it waits for user input and won't return from other call. Common causes are
+  --- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
+  --- or Operator-pending mode (can mitigate by exiting it)
+  function is_blocked()
+    return inst.api.nvim_get_mode()['blocking']
+  end
+
   function prevent_hanging()
-    if not inst.is_blocked() then
+    if not is_blocked() then
       return
     end
 
@@ -205,10 +265,6 @@ function M.create_nvim_instance(options)
       end,
     }),
 
-    is_blocked = function()
-      return inst.api.nvim_get_mode()['blocking']
-    end,
-
     cmd = function(cmd)
       prevent_hanging()
 
@@ -217,14 +273,115 @@ function M.create_nvim_instance(options)
 
     lua = function(lua_code, args)
       prevent_hanging()
-      return inst.api.nvim_exec_lua('return ' .. lua_code, args or {})
+      return inst.api.nvim_exec_lua(lua_code, args or {})
     end,
 
     lua_notify = function(lua_code, args)
       prevent_hanging()
       inst.api_notify.nvim_exec_lua(lua_code, args or {})
     end,
+
+    -- TODO (sbadragan): we could have expect_snapshot() and expect_snapshot() with a wait as well
+
+    -- TODO (sbadragan): can we set up default config for this on construction?
+    screenshot = function(config)
+      local _config = vim.tbl_deep_extend('force', {
+        force_redraw = true,
+        include_attrs = false,
+      }, config or {}) --[[@as snapt.ScreenshotConfigResolved]]
+
+      if _config.force_redraw then
+        inst.cmd('redraw')
+      end
+
+      local screenshot = inst.lua(
+        [[
+          local include_attrs = ...
+
+          local screenshot = { chars = {} }
+          for i = 1, vim.o.lines do
+            local char_line = {}
+            for j = 1, vim.o.columns do
+              table.insert(char_line, vim.fn.screenstring(i, j))
+            end
+            table.insert(screenshot.chars, char_line)
+          end
+
+          if include_attrs then
+            screenshot.attrs = {}
+            for i = 1, vim.o.lines do
+              local attr_line = {}
+              for j = 1, vim.o.columns do
+                table.insert(attr_line, vim.fn.screenattr(i, j))
+              end
+              table.insert(screenshot.attrs, attr_line)
+            end
+          end
+
+          return screenshot
+        ]],
+        {
+          _config.include_attrs,
+        }
+      )
+
+      screenshot.lines = {}
+      for _, char_line in ipairs(screenshot.chars) do
+        table.insert(screenshot.lines, table.concat(char_line))
+      end
+
+      if _config.include_attrs then
+        screenshot.attrs = encode_screenshot_attrs(screenshot.attrs)
+        screenshot.attr_lines = {}
+        for _, attr_line in ipairs(screenshot.attrs) do
+          table.insert(screenshot.attr_lines, table.concat(attr_line))
+        end
+      end
+
+      return setmetatable(screenshot, {
+        --- pretty print screenshot
+        ---@param _screenshot snapt.Screenshot
+        __tostring = function(_screenshot)
+          if _screenshot.attr_lines then
+            return string.format(
+              '%s\n\n%s',
+              print_screenshot(_screenshot.lines),
+              print_screenshot(_screenshot.attr_lines)
+            )
+          else
+            return print_screenshot(_screenshot.lines)
+          end
+        end,
+      })
+    end,
   }
+
+  -- TODO (sbadragan): remove
+  -- H.screenshot_new = function(t)
+  --   local process_screen = function(arr_2d)
+  --     local n_lines, n_cols = #arr_2d, #arr_2d[1]
+  --
+  --     -- Prepend lines with line number of the form `01|`
+  --     local n_digits = math.floor(math.log10(n_lines)) + 1
+  --     local format = string.format('%%0%dd|%%s', n_digits)
+  --     local lines = {}
+  --     for i = 1, n_lines do
+  --       table.insert(lines, string.format(format, i, table.concat(arr_2d[i])))
+  --     end
+  --
+  --     -- Make ruler
+  --     local prefix = string.rep('-', n_digits) .. '|'
+  --     local ruler = prefix .. ('---------|'):rep(math.ceil(0.1 * n_cols)):sub(1, n_cols)
+  --
+  --     return string.format('%s\n%s', ruler, table.concat(lines, '\n'))
+  --   end
+  --
+  --   return setmetatable(t, {
+  --     __tostring = function(x)
+  --       return string.format('%s\n\n%s', process_screen(x.text), process_screen(x.attr))
+  --     end,
+  --   })
+  -- end
 
   return inst
 end
