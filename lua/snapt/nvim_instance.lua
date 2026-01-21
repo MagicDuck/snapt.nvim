@@ -3,6 +3,8 @@
 -- There's really not a lot of ways you can write it and mini.test already did a cracking job on most things IMO.
 -- Credits go to mini.test's author and mistakes in this re-working are mine :)
 
+local assert = require('snapt.assert')
+
 local M = {}
 
 ---@class snapt.NvimInstanceOpts
@@ -52,15 +54,6 @@ local NvimInstance = {}
 --- stop neovim instance
 NvimInstance.stop = function() end
 
--- NOTE: assignments below like `NvimInstInterface.api = vim.api` trick language server to have proper types
-
---- Sugar for `vim.api.xxx` API to be executed inside nvim instance
-NvimInstance.api = vim.api
-
---- Variant of `api` functions called with `vim.rpcnotify`. Useful for making
---- blocking requests (like `getcharstr()`).
-NvimInstance.api_notify = vim.api
-
 ---@diagnostic disable-next-line: unused, missing-return
 --- runs vimscript in the context of the instance
 ---@param cmd string
@@ -72,12 +65,11 @@ NvimInstance.cmd = function(cmd) end
 --- Parameters (if any) are available as `...` inside the lua code chunk.
 ---
 --- examples:
---- local result = inst.lua('my_function(...)', { arg1, arg2 })
+--- local result = inst.lua('my_function(...)', arg1, arg2)
 --- local result = inst.lua('MyPlugin.doThing()')
 ---@param lua_code string lua code
----@param args? table
 ---@return any
-NvimInstance.lua = function(lua_code, args) end
+NvimInstance.lua = function(lua_code, ...) end
 
 ---@diagnostic disable-next-line: unused
 --- Executes lua code without waiting for result. This is useful when making
@@ -87,8 +79,7 @@ NvimInstance.lua = function(lua_code, args) end
 --- examples:
 --- inst.lua_notify('getcharstr()')
 ---@param lua_code string lua code
----@param args? table
-NvimInstance.lua_notify = function(lua_code, args) end
+NvimInstance.lua_notify = function(lua_code, ...) end
 
 ---@diagnostic disable-next-line: missing-return
 ---@diagnostic disable-next-line: unused
@@ -96,6 +87,18 @@ NvimInstance.lua_notify = function(lua_code, args) end
 ---@param config? snapt.ScreenshotConfig
 ---@return snapt.Screenshot
 NvimInstance.screenshot = function(config) end
+
+---@diagnostic disable-next-line: unused
+--- take a screenshot and assert that it's the same as previously recorded one
+---@param screenshot_config? snapt.ScreenshotConfig
+---@param match_opts? snapt.SnapshotOpts
+NvimInstance.expect_screenshot = function(screenshot_config, match_opts) end
+
+---@diagnostic disable-next-line: unused
+--- get buffer lines and assert that they the same as previously recorded ones
+---@param screenshot_config? snapt.ScreenshotConfig
+---@param match_opts? snapt.SnapshotOpts
+NvimInstance.expect_buf_lines = function(screenshot_config, match_opts) end
 
 --- starts nvim child process
 ---@param opts snapt.NvimInstanceResolvedOpts
@@ -212,12 +215,23 @@ function M.create_nvim_instance(options)
   ---@type snapt.NvimInstance
   local inst
 
+  function exec_lua(lua_code, ...)
+    local job = ensure_job_started()
+    return vim.rpcrequest(job.channel, 'nvim_exec_lua', lua_code, ...)
+  end
+
+  function exec_lua_notify(lua_code, ...)
+    local job = ensure_job_started()
+    return vim.rpcnotify(job.channel, 'nvim_exec_lua', lua_code, ...)
+  end
+
   --- check if instance is blocked
   --- i.e. it waits for user input and won't return from other call. Common causes are
   --- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
   --- or Operator-pending mode (can mitigate by exiting it)
   function is_blocked()
-    return inst.api.nvim_get_mode()['blocking']
+    local mode = exec_lua('vim.api.nvim_get_mode()')
+    return mode and mode.blocking
   end
 
   function prevent_hanging()
@@ -252,41 +266,20 @@ function M.create_nvim_instance(options)
       state.job = nil
     end,
 
-    api = setmetatable({}, {
-      __index = function(_, key)
-        return function(...)
-          local job = ensure_job_started()
-          return vim.rpcrequest(job.channel, key, ...)
-        end
-      end,
-    }),
-
-    api_notify = setmetatable({}, {
-      __index = function(_, key)
-        return function(...)
-          local job = ensure_job_started()
-          return vim.rpcnotify(job.channel, key, ...)
-        end
-      end,
-    }),
-
     cmd = function(cmd)
-      prevent_hanging()
-
-      return inst.api.nvim_exec2(cmd, { output = true })
+      return inst.lua('vim.api.nvim_exec2(...)', cmd, { output = true })
     end,
 
-    lua = function(lua_code, args)
+    -- TODO (sbadragan): spread args
+    lua = function(lua_code, ...)
       prevent_hanging()
-      return inst.api.nvim_exec_lua(lua_code, args or {})
+      exec_lua(lua_code, ...)
     end,
 
-    lua_notify = function(lua_code, args)
+    lua_notify = function(lua_code, ...)
       prevent_hanging()
-      inst.api_notify.nvim_exec_lua(lua_code, args or {})
+      exec_lua_notify(lua_code, ...)
     end,
-
-    -- TODO (sbadragan): we could have expect_snapshot() and expect_snapshot() with a wait as well
 
     screenshot = function(config)
       local _config = vim.tbl_deep_extend('force', {
@@ -329,9 +322,7 @@ function M.create_nvim_instance(options)
 
           return screenshot
         ]],
-        {
-          _config.include_attrs,
-        }
+        _config.include_attrs
       )
 
       screenshot.lines = {}
@@ -364,6 +355,71 @@ function M.create_nvim_instance(options)
           end
         end,
       })
+    end,
+
+    expect_screenshot = function(screenshot_config, match_opts)
+      assert.snapshot_matches(inst.screenshot(screenshot_config), match_opts)
+    end,
+
+    expect_buf_lines = function(buf, match_opts)
+      local _buf = buf == nil and 0 or buf
+      if type(_buf) ~= 'number' then
+        _buf = inst.lua('vim.fn.bufnr(...)', _buf)
+      end
+      local lines = inst.lua('vim.api.nvim_buf_get_lines(...)', _buf, 0, -1, true)
+
+      local snapshot = setmetatable({ lines = lines }, {
+        __tostring = function(t)
+          return table.concat(t.lines, '\n')
+        end,
+      })
+
+      assert.snapshot_matches(snapshot, match_opts)
+    end,
+
+    -- TODO (sbadragan): types
+    -- TODO (sbadragan): port over
+    type_keys = function(wait, ...)
+      ensure_running()
+
+      local has_wait = type(wait) == 'number'
+      local keys = has_wait and { ... } or { wait, ... }
+      keys = H.tbl_flatten(keys)
+
+      -- From `nvim_input` docs: "On execution error: does not fail, but
+      -- updates v:errmsg.". So capture it manually. NOTE: Have it global to
+      -- allow sending keys which will block in the middle (like `[[<C-\>]]` and
+      -- `<C-n>`). Otherwise, later check will assume that there was an error.
+      local cur_errmsg
+      for _, k in ipairs(keys) do
+        if type(k) ~= 'string' then
+          error('In `type_keys()` each argument should be either string or array of strings.')
+        end
+
+        -- But do that only if Neovim is not "blocked". Otherwise, usage of
+        -- `child.v` will block execution.
+        if not child.is_blocked() then
+          cur_errmsg = child.v.errmsg
+          child.v.errmsg = ''
+        end
+
+        -- Need to escape bare `<` (see `:h nvim_input`)
+        child.api.nvim_input(k == '<' and '<LT>' or k)
+
+        -- Possibly throw error manually
+        if not child.is_blocked() then
+          if child.v.errmsg ~= '' then
+            error(child.v.errmsg, 2)
+          else
+            child.v.errmsg = cur_errmsg or ''
+          end
+        end
+
+        -- Possibly wait
+        if has_wait and wait > 0 then
+          vim.loop.sleep(wait)
+        end
+      end
     end,
   }
 
