@@ -68,6 +68,7 @@ NvimInstance.cmd = function(cmd) end
 --- local result = inst.lua('my_function(...)', arg1, arg2)
 --- local result = inst.lua('MyPlugin.doThing()')
 ---@param lua_code string lua code
+---@param ... any params
 ---@return any
 NvimInstance.lua = function(lua_code, ...) end
 
@@ -79,6 +80,7 @@ NvimInstance.lua = function(lua_code, ...) end
 --- examples:
 --- inst.lua_notify('getcharstr()')
 ---@param lua_code string lua code
+---@param ... any params
 NvimInstance.lua_notify = function(lua_code, ...) end
 
 ---@diagnostic disable-next-line: missing-return
@@ -99,6 +101,10 @@ NvimInstance.expect_screenshot = function(screenshot_config, match_opts) end
 ---@param screenshot_config? snapt.ScreenshotConfig
 ---@param match_opts? snapt.SnapshotOpts
 NvimInstance.expect_buf_lines = function(screenshot_config, match_opts) end
+
+--- input keys, similar syntax to nvim_input only can take multiple args
+---@param ... string | string[]
+NvimInstance.input = function(...) end
 
 --- starts nvim child process
 ---@param opts snapt.NvimInstanceResolvedOpts
@@ -377,48 +383,35 @@ function M.create_nvim_instance(options)
       assert.snapshot_matches(snapshot, match_opts)
     end,
 
-    -- TODO (sbadragan): types
-    -- TODO (sbadragan): port over
-    type_keys = function(wait, ...)
-      ensure_running()
+    -- TODO (sbadragan): test
+    input = function(...)
+      local keys = vim.iter(...):flatten()
 
-      local has_wait = type(wait) == 'number'
-      local keys = has_wait and { ... } or { wait, ... }
-      keys = H.tbl_flatten(keys)
-
-      -- From `nvim_input` docs: "On execution error: does not fail, but
-      -- updates v:errmsg.". So capture it manually. NOTE: Have it global to
-      -- allow sending keys which will block in the middle (like `[[<C-\>]]` and
-      -- `<C-n>`). Otherwise, later check will assume that there was an error.
-      local cur_errmsg
-      for _, k in ipairs(keys) do
-        if type(k) ~= 'string' then
-          error('In `type_keys()` each argument should be either string or array of strings.')
+      for _, key in ipairs(keys) do
+        if type(key) ~= 'string' then
+          error('In `input()` each argument should be either string or array of strings.')
         end
+      end
 
-        -- But do that only if Neovim is not "blocked". Otherwise, usage of
-        -- `child.v` will block execution.
-        if not child.is_blocked() then
-          cur_errmsg = child.v.errmsg
-          child.v.errmsg = ''
-        end
+      local previous_errmsg = inst.lua([[
+        local errmsg = vim.v.errmsg
+        vim.v.errmsg = ''
+        return errmsg
+      ]])
 
-        -- Need to escape bare `<` (see `:h nvim_input`)
-        child.api.nvim_input(k == '<' and '<LT>' or k)
+      inst.lua_notify('vim.api.nvim_input(...)', table.concat(keys))
 
-        -- Possibly throw error manually
-        if not child.is_blocked() then
-          if child.v.errmsg ~= '' then
-            error(child.v.errmsg, 2)
-          else
-            child.v.errmsg = cur_errmsg or ''
-          end
-        end
+      local errmsg = inst.lua(
+        [[
+          local errmsg = vim.v.errmsg
+          vim.v.errmsg = ...
+          return errmsg
+        ]],
+        previous_errmsg
+      )
 
-        -- Possibly wait
-        if has_wait and wait > 0 then
-          vim.loop.sleep(wait)
-        end
+      if errmsg ~= '' then
+        error(errmsg, 2)
       end
     end,
   }
