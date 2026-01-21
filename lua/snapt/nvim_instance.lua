@@ -12,6 +12,7 @@ local M = {}
 ---@field cleanup_previous? boolean stop/clean up previous global nvim instance if existing
 ---@field lines? integer
 ---@field columns? integer
+---@field default_screenshot_config? snapt.ScreenshotConfig
 
 ---@class snapt.NvimInstanceResolvedOpts
 ---@field nvim_executable string
@@ -19,6 +20,7 @@ local M = {}
 ---@field connection_timeout integer
 ---@field lines integer
 ---@field columns integer
+---@field default_screenshot_config snapt.ScreenshotConfig
 
 ---@class snapt.NvimInstaceJob
 ---@field address string
@@ -35,11 +37,13 @@ local M = {}
 ---@field attr_lines? string[] lines of encoded attributes for all screen positions
 
 ---@class snapt.ScreenshotConfig
----@field force_redraw? boolean whether to process pending redraws before doing screenshot
+---@field redraw? boolean whether to process pending redraws before doing screenshot
+---@field redrawstatus? boolean whether to redraw status bar before doing screenshot
 ---@field include_attrs? boolean whether to include screen attributes (highlights, extmarks, etc) in screenshot
 
 ---@class snapt.ScreenshotConfigResolved
----@field force_redraw boolean
+---@field redraw boolean
+---@field redrawstatus boolean
 ---@field include_attrs boolean
 
 ---@class snapt.NvimInstance
@@ -190,6 +194,7 @@ function M.create_nvim_instance(options)
     connection_timeout = 5000,
     lines = 24,
     columns = 80,
+    default_screenshot_config = {},
   }, options or {}) --[[@as snapt.NvimInstanceResolvedOpts]]
 
   local state = {
@@ -283,15 +288,19 @@ function M.create_nvim_instance(options)
 
     -- TODO (sbadragan): we could have expect_snapshot() and expect_snapshot() with a wait as well
 
-    -- TODO (sbadragan): can we set up default config for this on construction?
     screenshot = function(config)
       local _config = vim.tbl_deep_extend('force', {
-        force_redraw = true,
+        redraw = true,
+        redrawstatus = true,
         include_attrs = false,
-      }, config or {}) --[[@as snapt.ScreenshotConfigResolved]]
+      }, opts.default_screenshot_config or {}, config or {}) --[[@as snapt.ScreenshotConfigResolved]]
 
-      if _config.force_redraw then
+      if _config.redraw then
         inst.cmd('redraw')
+      end
+
+      if _config.redrawstatus then
+        inst.cmd('redrawstatus')
       end
 
       local screenshot = inst.lua(
@@ -338,14 +347,16 @@ function M.create_nvim_instance(options)
         end
       end
 
+      -- TODO (sbadragan): do we need line numbers for attrs in order to cross-reference them??
       return setmetatable(screenshot, {
         --- pretty print screenshot
         ---@param _screenshot snapt.Screenshot
         __tostring = function(_screenshot)
           if _screenshot.attr_lines then
             return string.format(
-              '%s\n\n%s',
+              '%s\n%s\n%s',
               print_screenshot(_screenshot.lines),
+              string.rep('-', opts.columns),
               print_screenshot(_screenshot.attr_lines)
             )
           else
@@ -355,33 +366,6 @@ function M.create_nvim_instance(options)
       })
     end,
   }
-
-  -- TODO (sbadragan): remove
-  -- H.screenshot_new = function(t)
-  --   local process_screen = function(arr_2d)
-  --     local n_lines, n_cols = #arr_2d, #arr_2d[1]
-  --
-  --     -- Prepend lines with line number of the form `01|`
-  --     local n_digits = math.floor(math.log10(n_lines)) + 1
-  --     local format = string.format('%%0%dd|%%s', n_digits)
-  --     local lines = {}
-  --     for i = 1, n_lines do
-  --       table.insert(lines, string.format(format, i, table.concat(arr_2d[i])))
-  --     end
-  --
-  --     -- Make ruler
-  --     local prefix = string.rep('-', n_digits) .. '|'
-  --     local ruler = prefix .. ('---------|'):rep(math.ceil(0.1 * n_cols)):sub(1, n_cols)
-  --
-  --     return string.format('%s\n%s', ruler, table.concat(lines, '\n'))
-  --   end
-  --
-  --   return setmetatable(t, {
-  --     __tostring = function(x)
-  --       return string.format('%s\n\n%s', process_screen(x.text), process_screen(x.attr))
-  --     end,
-  --   })
-  -- end
 
   return inst
 end
