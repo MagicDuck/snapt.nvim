@@ -57,7 +57,8 @@ NvimInstance.stop = function() end
 ---@diagnostic disable-next-line: unused, missing-return
 --- runs vimscript in the context of the instance
 ---@param cmd string
----@return { output?: string } result
+---@return string result
+-- TODO (sbadragan): are those marshalled?
 NvimInstance.cmd = function(cmd) end
 
 ---@diagnostic disable-next-line: unused
@@ -67,10 +68,25 @@ NvimInstance.cmd = function(cmd) end
 --- examples:
 --- local result = inst.lua('my_function(...)', arg1, arg2)
 --- local result = inst.lua('MyPlugin.doThing()')
----@param lua_code string lua code
+---@param lua_expression string lua code
 ---@param ... any params
 ---@return any
-NvimInstance.lua = function(lua_code, ...) end
+NvimInstance.lua = function(lua_expression, ...) end
+
+---@diagnostic disable-next-line: unused
+--- Execute lua expression and potentially returns result if you use a return statement.
+--- Parameters (if any) are available as `...` inside the lua code chunk.
+---
+--- example:
+--- inst.lua([[
+---   local arg1, arg2 = ...
+---   my_function(arg1)
+---   return other_function()
+--- ]], arg1, arg2)
+---@param lua_code_block string lua code
+---@param ... any params
+---@return any
+NvimInstance.lua_block = function(lua_code_block, ...) end
 
 ---@diagnostic disable-next-line: unused
 --- Executes lua code without waiting for result. This is useful when making
@@ -105,6 +121,11 @@ NvimInstance.expect_buf_lines = function(screenshot_config, match_opts) end
 --- input keys, similar syntax to nvim_input only can take multiple args
 ---@param ... string | string[]
 NvimInstance.input = function(...) end
+
+---@diagnostic disable-next-line: unused
+--- sleep for given number of milliseconds
+---@param milliseconds integer
+NvimInstance.sleep = function(milliseconds) end
 
 --- starts nvim child process
 ---@param opts snapt.NvimInstanceResolvedOpts
@@ -223,12 +244,17 @@ function M.create_nvim_instance(options)
 
   function exec_lua(lua_code, ...)
     local job = ensure_job_started()
-    return vim.rpcrequest(job.channel, 'nvim_exec_lua', lua_code, ...)
+    local result = vim.rpcrequest(job.channel, 'nvim_exec_lua', lua_code, { ... })
+    if result == vim.NIL then
+      return nil
+    else
+      return result
+    end
   end
 
   function exec_lua_notify(lua_code, ...)
     local job = ensure_job_started()
-    return vim.rpcnotify(job.channel, 'nvim_exec_lua', lua_code, ...)
+    return vim.rpcnotify(job.channel, 'nvim_exec_lua', lua_code, { ... })
   end
 
   --- check if instance is blocked
@@ -236,7 +262,7 @@ function M.create_nvim_instance(options)
   --- active |hit-enter-prompt| (can mitigate by increasing prompt height to a bigger value)
   --- or Operator-pending mode (can mitigate by exiting it)
   function is_blocked()
-    local mode = exec_lua('vim.api.nvim_get_mode()')
+    local mode = exec_lua('return vim.api.nvim_get_mode()')
     return mode and mode.blocking
   end
 
@@ -273,18 +299,23 @@ function M.create_nvim_instance(options)
     end,
 
     cmd = function(cmd)
-      return inst.lua('vim.api.nvim_exec2(...)', cmd, { output = true })
+      local result = inst.lua('vim.api.nvim_exec2(...)', cmd, { output = true })
+      return result.output
     end,
 
-    -- TODO (sbadragan): spread args
-    lua = function(lua_code, ...)
+    lua = function(lua_expression, ...)
       prevent_hanging()
-      exec_lua(lua_code, ...)
+      return exec_lua('return ' .. lua_expression, ...)
+    end,
+
+    lua_block = function(lua_code_block, ...)
+      prevent_hanging()
+      return exec_lua(lua_code_block, ...)
     end,
 
     lua_notify = function(lua_code, ...)
       prevent_hanging()
-      exec_lua_notify(lua_code, ...)
+      return exec_lua_notify(lua_code, ...)
     end,
 
     screenshot = function(config)
@@ -302,7 +333,7 @@ function M.create_nvim_instance(options)
         inst.cmd('redrawstatus')
       end
 
-      local screenshot = inst.lua(
+      local screenshot = inst.lua_block(
         [[
           local include_attrs = ...
 
@@ -393,7 +424,7 @@ function M.create_nvim_instance(options)
         end
       end
 
-      local previous_errmsg = inst.lua([[
+      local previous_errmsg = inst.lua_block([[
         local errmsg = vim.v.errmsg
         vim.v.errmsg = ''
         return errmsg
@@ -401,7 +432,7 @@ function M.create_nvim_instance(options)
 
       inst.lua_notify('vim.api.nvim_input(...)', table.concat(keys))
 
-      local errmsg = inst.lua(
+      local errmsg = inst.lua_block(
         [[
           local errmsg = vim.v.errmsg
           vim.v.errmsg = ...
@@ -413,6 +444,27 @@ function M.create_nvim_instance(options)
       if errmsg ~= '' then
         error(errmsg, 2)
       end
+    end,
+
+    sleep = function(milliseconds)
+      vim.uv.sleep(milliseconds)
+    end,
+
+    -- TODO (sbadragan): do we need a condition_label?
+    wait_for_condition = function(condition, timeout, check_interval)
+      local max = timeout or 2000
+      local inc = check_interval or 10
+      for _ = 0, max, inc do
+        if condition() then
+          return
+        else
+          inst.sleep(inc)
+        end
+      end
+
+      error(
+        'Timed out waiting for condition after ' .. max .. 'ms!\n\n' .. tostring(inst.screenshot())
+      )
     end,
   }
 
